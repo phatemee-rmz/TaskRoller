@@ -136,7 +136,7 @@ async def button_handler(update: Update, context: CallbackContext):
         updated_weekly_list.append(replacement)
     new_text = "📝 اسامی بروز شده:\n"
     if replacement:
-        new_text += f"(_{name_absent}_ حذف و _{replacement}_ وزحمتش افتاد به دوش\n\n"
+        new_text += f"_{name_absent}_ حذف شد و زحمتش افتاد به دوش _{replacement}_\n\n"
     new_text += "\n".join([f"🔹 {n}" for n in updated_weekly_list])
     new_keyboard = build_keyboard(updated_weekly_list)
     await query.edit_message_text(text=new_text, reply_markup=new_keyboard, parse_mode='Markdown')
