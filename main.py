@@ -107,7 +107,7 @@ async def send_names(context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text="خطا: مشکلی در انتخاب اسامی پیش آمده است!")
         return
         
-    text = "📝 اسامی افراد این هفته:\n" + "\n".join([f"🔹 {name}" for name in names])
+    text = "📝 اسامی افراد امروز برای جمع آوری وسایل :\n" + "\n".join([f"🔹 {name}" for name in names])
     keyboard = build_keyboard(names)
     await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
@@ -136,7 +136,7 @@ async def button_handler(update: Update, context: CallbackContext):
         updated_weekly_list.append(replacement)
     new_text = "📝 اسامی بروز شده:\n"
     if replacement:
-        new_text += f"(_{name_absent}_ حذف و _{replacement}_ جایگزین شد)\n\n"
+        new_text += f"(_{name_absent}_ حذف و _{replacement}_ وزحمتش افتاد به دوش\n\n"
     new_text += "\n".join([f"🔹 {n}" for n in updated_weekly_list])
     new_keyboard = build_keyboard(updated_weekly_list)
     await query.edit_message_text(text=new_text, reply_markup=new_keyboard, parse_mode='Markdown')
