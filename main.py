@@ -1,5 +1,6 @@
 import json
 import random
+from datetime import datetime, timedelta
 import pytz
 from datetime import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
@@ -213,44 +214,59 @@ async def setup_command(update: Update, context: CallbackContext):
     )
     await send_names(context)
 
-
 def main():
-    
     allowed_updates = [Update.MESSAGE, Update.CALLBACK_QUERY, Update.CHAT_MEMBER]
     
     app = ApplicationBuilder().token(TOKEN).build()
     job_queue = app.job_queue
 
+    # --- Handlers ---
     app.add_handler(CommandHandler("setup", setup_command))
     app.add_handler(ChatMemberHandler(track_chat_members, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(CommandHandler("resethistory", reset_history_command))
     app.add_handler(CommandHandler("test", test_command))
     app.add_handler(CallbackQueryHandler(button_handler))
 
+    # --- Load config and schedule jobs ---
     config = load_config()
-    if chat_id := config.get("group_chat_id"):
-        print(f"INFO: Found existing group_chat_id: {chat_id}. Re-scheduling job...")
+    chat_id = config.get("group_chat_id")
+
+    # Schedule the main weekly job if chat_id is set
+    if chat_id:
+        print(f"INFO: Found existing group_chat_id: {chat_id}. Re-scheduling main job...")
         schedule_weekly_job(app.job_queue, chat_id)
+        
+        # ### شروع کد اضافه شده برای تست ساعت ۷ صبح ###
+        tehran_tz = pytz.timezone("Asia/Tehran")
+        now_tehran = datetime.now(tehran_tz)
+        
+        # تنظیم زمان هدف برای ساعت ۷ صبح امروز
+        test_time = now_tehran.replace(hour=7, minute=0, second=0, microsecond=0)
+        
+        # اگر ساعت ۷ صبح امروز گذشته باشد، آن را برای فردا تنظیم کن
+        if test_time < now_tehran:
+            print("INFO: 7 AM today has already passed. Scheduling test for 7 AM tomorrow.")
+            test_time += timedelta(days=1)
+        
+        # ایجاد یک کار یک‌باره برای تست
+        job_queue.run_once(
+            send_names,
+            when=test_time,
+            name="one_time_test_at_7am",
+            chat_id=chat_id
+        )
+        print(f"SUCCESS: One-time test job scheduled for {test_time.strftime('%Y-%m-%d %H:%M:%S %Z')} in chat {chat_id}")
+        # ### پایان کد اضافه شده ###
 
     print("Bot started and is running...")
-    if not config.get("group_chat_id"):
-        print("WARNING: Group ID not configured. Please add the bot to a group to complete setup.")
+    if not chat_id:
+        print("WARNING: Group ID not configured. Please add the bot to a group and use /setup.")
     else:
-        print(f"Bot is configured for group ID: {config.get('group_chat_id')}")
+        print(f"Bot is configured for group ID: {chat_id}")
     print("Use /test command for manual triggering in the group.")
 
     app.run_polling(allowed_updates=allowed_updates)
 
-    now_tehran = datetime.now(pytz.timezone("Asia/Tehran"))
-    run_at = (now_tehran + timedelta(minutes=5)).time().replace(tzinfo=pytz.timezone("Asia/Tehran"))
-
-    job_queue.run_daily(
-        send_names,
-        time=run_at,
-        days=(now_tehran.weekday(),), 
-        name="test_run_job",
-        chat_id=config.get("group_chat_id")
-    )
 
 if __name__ == "__main__":
     main()
