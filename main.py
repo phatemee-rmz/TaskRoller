@@ -219,6 +219,7 @@ def main():
     allowed_updates = [Update.MESSAGE, Update.CALLBACK_QUERY, Update.CHAT_MEMBER]
     
     app = ApplicationBuilder().token(TOKEN).build()
+    job_queue = app.job_queue
 
     app.add_handler(CommandHandler("setup", setup_command))
     app.add_handler(ChatMemberHandler(track_chat_members, ChatMemberHandler.CHAT_MEMBER))
@@ -239,6 +240,17 @@ def main():
     print("Use /test command for manual triggering in the group.")
 
     app.run_polling(allowed_updates=allowed_updates)
+
+    now_tehran = datetime.now(pytz.timezone("Asia/Tehran"))
+    run_at = (now_tehran + timedelta(minutes=5)).time().replace(tzinfo=pytz.timezone("Asia/Tehran"))
+
+    job_queue.run_daily(
+        send_names,
+        time=run_at,
+        days=(now_tehran.weekday(),), 
+        name="test_run_job",
+        chat_id=config.get("group_chat_id")
+    )
 
 if __name__ == "__main__":
     main()
