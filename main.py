@@ -1,12 +1,10 @@
 import json
 import random
-from datetime import datetime, timedelta
-import pytz
-from datetime import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, CallbackQueryHandler, ChatMemberHandler
 
 # --- Constants ---
+# TOKEN خود را در اینجا قرار دهید
 TOKEN = "7807331640:AAFFzccQRJlZMNlQvkrQRNmX_xZwFGKqd2A"
 CONFIG_FILE = "config.json"
 NAMES_FILE = "names.json"
@@ -89,27 +87,21 @@ def build_keyboard(names, buttons_per_row=2):
     return InlineKeyboardMarkup(keyboard)
 
 # --- Core Bot Handlers ---
-async def send_names(context: CallbackContext):
-    config = load_config()
-    chat_id = config.get("group_chat_id")
-
-    if not chat_id:
-        print("ERROR: Cannot send names. Group Chat ID is not configured yet.")
-        if context.job and context.job.chat_id and context.job.chat_id > 0:
-             await context.bot.send_message(
-                 chat_id=context.job.chat_id, 
-                 text="خطا: هنوز آیدی گروه تنظیم نشده! لطفا ربات را به گروه مورد نظر اضافه کنید و سپس دستور /test را در آنجا امتحان کنید."
-             )
+async def send_names(context: CallbackContext, chat_id_to_send: int):
+    """این تابع لیست اسامی را به چت مشخص شده ارسال می‌کند"""
+    if not chat_id_to_send:
+        print("ERROR: Cannot send names. Chat ID is not provided.")
         return
 
     names = select_people()
     if not names:
-        await context.bot.send_message(chat_id=chat_id, text="خطا: مشکلی در انتخاب اسامی پیش آمده است!")
+        await context.bot.send_message(chat_id=chat_id_to_send, text="خطا: مشکلی در انتخاب اسامی پیش آمده است!")
         return
         
     text = "📝 اسامی افراد امروز برای جمع آوری وسایل :\n" + "\n".join([f"🔹 {name}" for name in names])
     keyboard = build_keyboard(names)
-    await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+    await context.bot.send_message(chat_id=chat_id_to_send, text=text, reply_markup=keyboard)
+
 
 async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -145,53 +137,42 @@ async def reset_history_command(update: Update, context: CallbackContext):
     save_cycle_history([])
     await update.message.reply_text("✅ حافظه چرخه انتخاب اسامی با موفقیت پاک شد. چرخه از نو شروع خواهد شد.")
 
+# این دستور اکنون تنها راه برای ارسال لیست است
 async def test_command(update: Update, context: CallbackContext):
-    await update.message.reply_text("باشه، الان یک لیست اسامی جدید به صورت تستی در گروه ارسال می‌کنم...")
-    await send_names(context)
-
-def schedule_weekly_job(job_queue: object, chat_id: int):
-    current_jobs = job_queue.get_jobs_by_name("weekly_selection_job")
-    for job in current_jobs:
-        job.schedule_removal()
-        print("INFO: Removed existing scheduled job to avoid duplication.")
+    config = load_config()
+    chat_id = config.get("group_chat_id")
+    
+    if not chat_id:
+        await update.message.reply_text("خطا: هنوز آیدی گروه تنظیم نشده! لطفا ابتدا ربات را به گروه اضافه کرده و از دستور /setup استفاده کنید.")
+        return
         
-    tehran_tz = pytz.timezone("Asia/Tehran")
-    target_time = time(12, 0, 0, tzinfo=tehran_tz)
-    target_days = (3, 4)
+    if update.effective_chat.id != chat_id:
+        await update.message.reply_text("این دستور فقط باید در گروهی که ربات برای آن تنظیم شده، استفاده شود.")
+        return
 
-    job_queue.run_daily(
-        send_names,
-        time=target_time,
-        days=target_days,
-        name="weekly_selection_job",
-        chat_id=chat_id
-    )
-    print(f"SUCCESS: Job 'weekly_selection_job' scheduled successfully for chat {chat_id}.")
+    await update.message.reply_text("باشه، الان یک لیست اسامی جدید در گروه ارسال می‌کنم...")
+    await send_names(context, chat_id_to_send=chat_id)
 
 async def track_chat_members(update: Update, context: CallbackContext) -> None:
-    print(f"DEBUG: Received chat member update: {update.chat_member}")
     result = update.chat_member
-    print(f"DEBUG: Bot ID: {context.bot.id}, New member ID: {result.new_chat_member.user.id}, Status: {result.new_chat_member.status}")
     if result.new_chat_member.user.id == context.bot.id and result.new_chat_member.status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR]:
         chat_id = result.chat.id
         chat_title = result.chat.title
         print(f"INFO: Bot was added to group '{chat_title}' with ID: {chat_id}. Saving configuration.")
+        
         config = load_config()
         config["group_chat_id"] = chat_id
         save_config(config)
-        print(f"DEBUG: Saved config with group_chat_id: {chat_id}")
-        try:
-            await context.bot.send_message(
-                chat_id=chat_id, 
-                text=(
-                    f"سلام! من در گروه '{chat_title}' با موفقیت فعال شدم ✅\n"
-                    "از این به بعد، هر پنج‌شنبه و جمعه ساعت ۱۲ لیست افراد رو ارسال می‌کنم 🕛\n"
-                    "الان یک نمونه لیست به صورت تستی می‌فرستم..."
-                )
+
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=(
+                f"سلام! من در گروه '{chat_title}' با موفقیت فعال شدم ✅\n"
+                "برای دریافت لیست افراد، از دستور /test استفاده کنید.\n"
+                "الان یک نمونه لیست به صورت تستی می‌فرستم..."
             )
-        except Exception as e:
-            print(f"ERROR: Failed to send welcome message: {e}")
-        await send_names(context)
+        )
+        await send_names(context, chat_id_to_send=chat_id)
 
 async def setup_command(update: Update, context: CallbackContext):
     chat = update.effective_chat
@@ -205,20 +186,17 @@ async def setup_command(update: Update, context: CallbackContext):
     config["group_chat_id"] = chat_id
     save_config(config)
     
-    schedule_weekly_job(context.job_queue, chat_id)
-
     await update.message.reply_text(
         f"✅ ربات با موفقیت برای گروه '{chat_title}' پیکربندی شد!\n"
-        f"از این به بعد، هر پنج‌شنبه و جمعه ساعت ۱۲ لیست اسامی ارسال خواهد شد.\n"
+        f"برای دریافت لیست اسامی از دستور /test استفاده کنید.\n"
         f"الان یک نمونه لیست به صورت تستی ارسال می‌کنم..."
     )
-    await send_names(context)
+    await send_names(context, chat_id_to_send=chat_id)
 
 def main():
     allowed_updates = [Update.MESSAGE, Update.CALLBACK_QUERY, Update.CHAT_MEMBER]
     
     app = ApplicationBuilder().token(TOKEN).build()
-    job_queue = app.job_queue
 
     # --- Handlers ---
     app.add_handler(CommandHandler("setup", setup_command))
@@ -227,43 +205,16 @@ def main():
     app.add_handler(CommandHandler("test", test_command))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    # --- Load config and schedule jobs ---
+    # --- بررسی کانفیگ در زمان اجرا ---
     config = load_config()
     chat_id = config.get("group_chat_id")
-
-    # Schedule the main weekly job if chat_id is set
-    if chat_id:
-        print(f"INFO: Found existing group_chat_id: {chat_id}. Re-scheduling main job...")
-        schedule_weekly_job(app.job_queue, chat_id)
-        
-        # ### شروع کد اضافه شده برای تست ساعت ۷ صبح ###
-        tehran_tz = pytz.timezone("Asia/Tehran")
-        now_tehran = datetime.now(tehran_tz)
-        
-        # تنظیم زمان هدف برای ساعت ۷ صبح امروز
-        test_time = now_tehran.replace(hour=7, minute=0, second=0, microsecond=0)
-        
-        # اگر ساعت ۷ صبح امروز گذشته باشد، آن را برای فردا تنظیم کن
-        if test_time < now_tehran:
-            print("INFO: 7 AM today has already passed. Scheduling test for 7 AM tomorrow.")
-            test_time += timedelta(days=1)
-        
-        # ایجاد یک کار یک‌باره برای تست
-        job_queue.run_once(
-            send_names,
-            when=test_time,
-            name="one_time_test_at_7am",
-            chat_id=chat_id
-        )
-        print(f"SUCCESS: One-time test job scheduled for {test_time.strftime('%Y-%m-%d %H:%M:%S %Z')} in chat {chat_id}")
-        # ### پایان کد اضافه شده ###
 
     print("Bot started and is running...")
     if not chat_id:
         print("WARNING: Group ID not configured. Please add the bot to a group and use /setup.")
     else:
         print(f"Bot is configured for group ID: {chat_id}")
-    print("Use /test command for manual triggering in the group.")
+    print("Use the /test command in the configured group to trigger the name list.")
 
     app.run_polling(allowed_updates=allowed_updates)
 
